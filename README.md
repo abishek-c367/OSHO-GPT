@@ -1,5 +1,8 @@
 # OSHO-GPT: train, adapt, and deploy a GPT-2 model
 
+Experiment with the model:
+http://13.127.96.164:8000/
+
 This repository is a practical end-to-end GPT language-model project. It
 contains the model implementation, data preparation scripts, training entry
 points, a LoRA implementation, text-generation utilities, and a FastAPI web
