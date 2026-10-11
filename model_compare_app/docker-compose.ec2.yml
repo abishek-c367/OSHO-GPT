@@ -1,0 +1,15 @@
+services:
+  model-compare:
+    image: osho-model-compare:latest
+    build:
+      context: ..
+      dockerfile: model_compare_app/Dockerfile
+    container_name: osho-model-compare
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      COMPARE_DEVICE: cpu
+      COMPARE_PRETRAINED_MODEL: /models/huggingface/hub/models--gpt2/snapshots/607a30d783dfa663caf39e06633721c8d4cfcd7e
+      HF_HOME: /models/huggingface
+      HF_HUB_OFFLINE: "1"

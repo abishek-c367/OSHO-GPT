@@ -1,0 +1,16 @@
+*
+!src/
+!src/**
+!model_compare_app/
+!model_compare_app/**
+!out/
+!out/ckpt_scratch_full.pt
+!out_gpt2_osho/
+!out_gpt2_osho/finetuned_gpt2.pt
+!Lora/
+!Lora/rank_16/
+!Lora/rank_16/adapter.pt
+!data/
+!data/Osho/
+!data/Osho/gpt2/
+!data/Osho/gpt2/**

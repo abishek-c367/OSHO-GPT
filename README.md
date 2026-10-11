@@ -1,234 +1,578 @@
+# NanoGPT: train, adapt, and deploy a GPT-2 model
 
-# nanoGPT
+This repository is a practical end-to-end GPT language-model project. It
+contains the model implementation, data preparation scripts, training entry
+points, a LoRA implementation, text-generation utilities, and a FastAPI web
+service that compares three model variants:
 
-![nanoGPT](assets/nanogpt.jpg)
+1. a GPT-2-sized model trained from random initialization;
+2. the same architecture continued from Hugging Face GPT-2 weights; and
+3. the Hugging Face GPT-2 model adapted with low-rank adapters (LoRA).
 
+The example dataset in this checkout is an Osho text corpus under
+`data/Osho`. Replace it with text for which you have the necessary rights and
+consent. Do not upload private, copyrighted, or personally identifying data to
+Hugging Face, Docker Hub, or AWS without permission.
 
----
+## What is in this repository?
 
-**Update Nov 2025** nanoGPT has a new and improved cousin called [nanochat](https://github.com/karpathy/nanochat). It is very likely you meant to use/find nanochat instead. nanoGPT (this repo) is now very old and deprecated but I will leave it up for posterity.
+| Path | Purpose |
+| --- | --- |
+| `src/model.py` | GPT architecture, Hugging Face GPT-2 weight import, generation, and LoRA layers |
+| `src/train.py` | From-scratch, resume, and full-model continued training; supports single GPU and DDP |
+| `src/train_lora.py` | Adapter-only LoRA fine-tuning with validation, early stopping, and resumable checkpoints |
+| `utilities/generate_lora.py` | Command-line generation from a LoRA checkpoint |
+| `utilities/sample.py` | Generation from a full nanoGPT checkpoint |
+| `data/Osho/prepare.py` | Tokenizes a local text corpus into `train.bin` and `val.bin` |
+| `data/openwebtext/prepare.py` | Downloads and tokenizes OpenWebText |
+| `model_compare_app/` | FastAPI API, browser UI, Dockerfile, and EC2 deployment material |
+| `config/` | Reusable training and evaluation configurations |
+| `out/` | Full checkpoint output for the scratch-trained model |
+| `out_gpt2_osho/` | Full checkpoint output for continued training |
+| `Lora/` | LoRA adapter output |
 
----
+The repository also contains notebooks and visualization utilities. They are
+useful for experiments but are not required for the reproducible pipeline
+below.
 
-The simplest, fastest repository for training/finetuning medium-sized GPTs. It is a rewrite of [minGPT](https://github.com/karpathy/minGPT) that prioritizes teeth over education. Still under active development, but currently the file `train.py` reproduces GPT-2 (124M) on OpenWebText, running on a single 8XA100 40GB node in about 4 days of training. The code itself is plain and readable: `train.py` is a ~300-line boilerplate training loop and `model.py` a ~300-line GPT model definition, which can optionally load the GPT-2 weights from OpenAI. That's it.
+## 1. Prerequisites
 
-![repro124m](assets/gpt2_124M_loss.png)
+### Hardware
 
-Because the code is so simple, it is very easy to hack to your needs, train new models from scratch, or finetune pretrained checkpoints (e.g. biggest one currently available as a starting point would be the GPT-2 1.3B model from OpenAI).
+Training GPT-2 is compute-intensive. A CUDA GPU with at least 12--16 GB of
+VRAM is a practical starting point for GPT-2 (124M) experiments. CPU training
+is useful for smoke tests only. Larger variants (`gpt2-medium`, `gpt2-large`,
+and `gpt2-xl`) require substantially more VRAM or distributed training.
 
-## install
+Inference can run on CPU, but loading all three comparison models needs
+several GB of RAM. The Docker image is large because it includes full
+checkpoints and a cached GPT-2 base model.
 
-```
-pip install torch numpy transformers datasets tiktoken wandb tqdm
-```
+### Software
 
-Dependencies:
+- Windows PowerShell for the local commands in this guide.
+- Python 3.10 or 3.11.
+- PyTorch 2.x. Install the CUDA build appropriate for the installed NVIDIA
+  driver, or use the CPU wheel for inference.
+- Git, and optionally Docker Desktop for local deployment.
+- An AWS account and an Ubuntu EC2 instance for the final deployment.
 
-- [pytorch](https://pytorch.org) <3
-- [numpy](https://numpy.org/install/) <3
--  `transformers` for huggingface transformers <3 (to load GPT-2 checkpoints)
--  `datasets` for huggingface datasets <3 (if you want to download + preprocess OpenWebText)
--  `tiktoken` for OpenAI's fast BPE code <3
--  `wandb` for optional logging <3
--  `tqdm` for progress bars <3
+Create an isolated environment from the repository root:
 
-## quick start
-
-If you are not a deep learning professional and you just want to feel the magic and get your feet wet, the fastest way to get started is to train a character-level GPT on the works of Shakespeare. First, we download it as a single (1MB) file and turn it from raw text into one large stream of integers:
-
-```sh
-python data/shakespeare_char/prepare.py
-```
-
-This creates a `train.bin` and `val.bin` in that data directory. Now it is time to train your GPT. The size of it very much depends on the computational resources of your system:
-
-**I have a GPU**. Great, we can quickly train a baby GPT with the settings provided in the [config/train_shakespeare_char.py](config/train_shakespeare_char.py) config file:
-
-```sh
-python train.py config/train_shakespeare_char.py
-```
-
-If you peek inside it, you'll see that we're training a GPT with a context size of up to 256 characters, 384 feature channels, and it is a 6-layer Transformer with 6 heads in each layer. On one A100 GPU this training run takes about 3 minutes and the best validation loss is 1.4697. Based on the configuration, the model checkpoints are being written into the `--out_dir` directory `out-shakespeare-char`. So once the training finishes we can sample from the best model by pointing the sampling script at this directory:
-
-```sh
-python sample.py --out_dir=out-shakespeare-char
-```
-
-This generates a few samples, for example:
-
-```
-ANGELO:
-And cowards it be strawn to my bed,
-And thrust the gates of my threats,
-Because he that ale away, and hang'd
-An one with him.
-
-DUKE VINCENTIO:
-I thank your eyes against it.
-
-DUKE VINCENTIO:
-Then will answer him to save the malm:
-And what have you tyrannous shall do this?
-
-DUKE VINCENTIO:
-If you have done evils of all disposition
-To end his power, the day of thrust for a common men
-That I leave, to fight with over-liking
-Hasting in a roseman.
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install numpy transformers datasets tiktoken tqdm
 ```
 
-lol  `¯\_(ツ)_/¯`. Not bad for a character-level model after 3 minutes of training on a GPU. Better results are quite likely obtainable by instead finetuning a pretrained GPT-2 model on this dataset (see finetuning section later).
+Install PyTorch separately so that the wheel matches your machine. For a CPU
+installation:
 
-**I only have a macbook** (or other cheap computer). No worries, we can still train a GPT but we want to dial things down a notch. I recommend getting the bleeding edge PyTorch nightly ([select it here](https://pytorch.org/get-started/locally/) when installing) as it is currently quite likely to make your code more efficient. But even without it, a simple train run could look as follows:
-
-```sh
-python train.py config/train_shakespeare_char.py --device=cpu --compile=False --eval_iters=20 --log_interval=1 --block_size=64 --batch_size=12 --n_layer=4 --n_head=4 --n_embd=128 --max_iters=2000 --lr_decay_iters=2000 --dropout=0.0
+```powershell
+python -m pip install torch
 ```
 
-Here, since we are running on CPU instead of GPU we must set both `--device=cpu` and also turn off PyTorch 2.0 compile with `--compile=False`. Then when we evaluate we get a bit more noisy but faster estimate (`--eval_iters=20`, down from 200), our context size is only 64 characters instead of 256, and the batch size only 12 examples per iteration, not 64. We'll also use a much smaller Transformer (4 layers, 4 heads, 128 embedding size), and decrease the number of iterations to 2000 (and correspondingly usually decay the learning rate to around max_iters with `--lr_decay_iters`). Because our network is so small we also ease down on regularization (`--dropout=0.0`). This still runs in about ~3 minutes, but gets us a loss of only 1.88 and therefore also worse samples, but it's still good fun:
+For a CUDA installation, use the command printed by the official PyTorch
+selector for your CUDA version. Verify the environment before training:
 
-```sh
-python sample.py --out_dir=out-shakespeare-char --device=cpu
-```
-Generates samples like this:
-
-```
-GLEORKEN VINGHARD III:
-Whell's the couse, the came light gacks,
-And the for mought you in Aut fries the not high shee
-bot thou the sought bechive in that to doth groan you,
-No relving thee post mose the wear
+```powershell
+python -c "import torch; print(torch.__version__); print('CUDA:', torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
-Not bad for ~3 minutes on a CPU, for a hint of the right character gestalt. If you're willing to wait longer, feel free to tune the hyperparameters, increase the size of the network, the context length (`--block_size`), the length of training, etc.
+The API dependencies are pinned in
+[model_compare_app/requirements.txt](model_compare_app/requirements.txt).
+Install them when running the web service:
 
-Finally, on Apple Silicon Macbooks and with a recent PyTorch version make sure to add `--device=mps` (short for "Metal Performance Shaders"); PyTorch then uses the on-chip GPU that can *significantly* accelerate training (2-3X) and allow you to use larger networks. See [Issue 28](https://github.com/karpathy/nanoGPT/issues/28) for more.
-
-## reproducing GPT-2
-
-A more serious deep learning professional may be more interested in reproducing GPT-2 results. So here we go - we first tokenize the dataset, in this case the [OpenWebText](https://openwebtext2.readthedocs.io/en/latest/), an open reproduction of OpenAI's (private) WebText:
-
-```sh
-python data/openwebtext/prepare.py
+```powershell
+python -m pip install -r model_compare_app\requirements.txt
 ```
 
-This downloads and tokenizes the [OpenWebText](https://huggingface.co/datasets/openwebtext) dataset. It will create a `train.bin` and `val.bin` which holds the GPT2 BPE token ids in one sequence, stored as raw uint16 bytes. Then we're ready to kick off training. To reproduce GPT-2 (124M) you'll want at least an 8X A100 40GB node and run:
+## 2. Prepare a text dataset
 
-```sh
-torchrun --standalone --nproc_per_node=8 train.py config/train_gpt2.py
+The training loop expects two binary files containing GPT-2 token IDs:
+
+```text
+data\<dataset>\train.bin
+data\<dataset>\val.bin
 ```
 
-This will run for about 4 days using PyTorch Distributed Data Parallel (DDP) and go down to loss of ~2.85. Now, a GPT-2 model just evaluated on OWT gets a val loss of about 3.11, but if you finetune it it will come down to ~2.85 territory (due to an apparent domain gap), making the two models ~match.
+Each file is a `uint16` NumPy-compatible stream. The model uses GPT-2's
+50,257-token vocabulary, so the same GPT-2 tokenizer must be used for
+preparation, training, and inference.
 
-If you're in a cluster environment and you are blessed with multiple GPU nodes you can make GPU go brrrr e.g. across 2 nodes like:
+### Prepare the included local corpus
 
-```sh
-# Run on the first (master) node with example IP 123.456.123.456:
-torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 --master_addr=123.456.123.456 --master_port=1234 train.py
-# Run on the worker node:
-torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123.456 --master_port=1234 train.py
+`data/Osho/prepare.py` currently contains a machine-specific source path.
+Change `input_file_path` to an absolute path on your machine before running
+it. For example:
+
+```powershell
+notepad data\Osho\prepare.py
 ```
 
-It is a good idea to benchmark your interconnect (e.g. iperf3). In particular, if you don't have Infiniband then also prepend `NCCL_IB_DISABLE=1` to the above launches. Your multinode training will work, but most likely _crawl_. By default checkpoints are periodically written to the `--out_dir`. We can sample from the model by simply `python sample.py`.
+Set it to a UTF-8 text file, then run:
 
-Finally, to train on a single GPU simply run the `python train.py` script. Have a look at all of its args, the script tries to be very readable, hackable and transparent. You'll most likely want to tune a number of those variables depending on your needs.
-
-## baselines
-
-OpenAI GPT-2 checkpoints allow us to get some baselines in place for openwebtext. We can get the numbers as follows:
-
-```sh
-$ python train.py config/eval_gpt2.py
-$ python train.py config/eval_gpt2_medium.py
-$ python train.py config/eval_gpt2_large.py
-$ python train.py config/eval_gpt2_xl.py
+```powershell
+python data\Osho\prepare.py
 ```
 
-and observe the following losses on train and val:
+The script performs a 90/10 train/validation split and writes
+`data/Osho/train.bin` and `data/Osho/val.bin`. It also expects a local
+GPT-2 tokenizer directory. The simplest reliable option is to download it
+once:
 
-| model | params | train loss | val loss |
-| ------| ------ | ---------- | -------- |
-| gpt2 | 124M         | 3.11  | 3.12     |
-| gpt2-medium | 350M  | 2.85  | 2.84     |
-| gpt2-large | 774M   | 2.66  | 2.67     |
-| gpt2-xl | 1558M     | 2.56  | 2.54     |
-
-However, we have to note that GPT-2 was trained on (closed, never released) WebText, while OpenWebText is just a best-effort open reproduction of this dataset. This means there is a dataset domain gap. Indeed, taking the GPT-2 (124M) checkpoint and finetuning on OWT directly for a while reaches loss down to ~2.85. This then becomes the more appropriate baseline w.r.t. reproduction.
-
-## finetuning
-
-Finetuning is no different than training, we just make sure to initialize from a pretrained model and train with a smaller learning rate. For an example of how to finetune a GPT on new text go to `data/shakespeare` and run `prepare.py` to download the tiny shakespeare dataset and render it into a `train.bin` and `val.bin`, using the OpenAI BPE tokenizer from GPT-2. Unlike OpenWebText this will run in seconds. Finetuning can take very little time, e.g. on a single GPU just a few minutes. Run an example finetuning like:
-
-```sh
-python train.py config/finetune_shakespeare.py
+```powershell
+python -c "from transformers import GPT2TokenizerFast; GPT2TokenizerFast.from_pretrained('gpt2').save_pretrained('data/Osho/gpt2')"
 ```
 
-This will load the config parameter overrides in `config/finetune_shakespeare.py` (I didn't tune them much though). Basically, we initialize from a GPT2 checkpoint with `init_from` and train as normal, except shorter and with a small learning rate. If you're running out of memory try decreasing the model size (they are `{'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}`) or possibly decreasing the `block_size` (context length). The best checkpoint (lowest validation loss) will be in the `out_dir` directory, e.g. in `out-shakespeare` by default, per the config file. You can then run the code in `sample.py --out_dir=out-shakespeare`:
+If the script's tokenizer path is not `data/Osho/gpt2`, update it before
+preparing the data. Check the result:
 
-```
-THEODORE:
-Thou shalt sell me to the highest bidder: if I die,
-I sell thee to the first; if I go mad,
-I sell thee to the second; if I
-lie, I sell thee to the third; if I slay,
-I sell thee to the fourth: so buy or sell,
-I tell thee again, thou shalt not sell my
-possession.
-
-JULIET:
-And if thou steal, thou shalt not sell thyself.
-
-THEODORE:
-I do not steal; I sell the stolen goods.
-
-THEODORE:
-Thou know'st not what thou sell'st; thou, a woman,
-Thou art ever a victim, a thing of no worth:
-Thou hast no right, no right, but to be sold.
+```powershell
+Get-ChildItem data\Osho\train.bin, data\Osho\val.bin, data\Osho\gpt2
 ```
 
-Whoa there, GPT, entering some dark place over there. I didn't really tune the hyperparameters in the config too much, feel free to try!
+For a real project, preserve the train/validation split across experiments,
+remove duplicate documents, normalize encoding, and keep a data manifest
+containing the source, license, preprocessing version, and split seed.
 
-## sampling / inference
+### Prepare OpenWebText
 
-Use the script `sample.py` to sample either from pre-trained GPT-2 models released by OpenAI, or from a model you trained yourself. For example, here is a way to sample from the largest available `gpt2-xl` model:
+The OpenWebText script downloads a large dataset and can require tens of GB
+of cache and disk space. It uses `datasets`, `tiktoken`, multiple processes,
+and writes `data/openwebtext/train.bin` and `data/openwebtext/val.bin`:
 
-```sh
-python sample.py \
-    --init_from=gpt2-xl \
-    --start="What is the answer to life, the universe, and everything?" \
-    --num_samples=5 --max_new_tokens=100
+```powershell
+python data\openwebtext\prepare.py
 ```
 
-If you'd like to sample from a model you trained, use the `--out_dir` to point the code appropriately. You can also prompt the model with some text from a file, e.g. ```python sample.py --start=FILE:prompt.txt```.
+Do not run this command for a small smoke test. Start with the local corpus or
+a small, licensed sample.
 
-## efficiency notes
+## 3. Train a GPT model from scratch
 
-For simple model benchmarking and profiling, `bench.py` might be useful. It's identical to what happens in the meat of the training loop of `train.py`, but omits much of the other complexities.
+`src/train.py` is the main nanoGPT training loop. From the repository root,
+run a short smoke test first:
 
-Note that the code by default uses [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). At the time of writing (Dec 29, 2022) this makes `torch.compile()` available in the nightly release. The improvement from the one line of code is noticeable, e.g. cutting down iteration time from ~250ms / iter to 135ms / iter. Nice work PyTorch team!
+```powershell
+python src\train.py `
+  --dataset=Osho `
+  --out_dir=out\scratch_smoke `
+  --init_from=scratch `
+  --batch_size=2 `
+  --block_size=256 `
+  --gradient_accumulation_steps=1 `
+  --max_iters=20 `
+  --eval_interval=10 `
+  --eval_iters=5 `
+  --learning_rate=6e-4 `
+  --device=cuda `
+  --compile=False
+```
 
-## todos
+Use `--device=cpu` for a CPU smoke test. The script reads configuration
+overrides through `utilities/configurator.py`; the command-line values above
+take precedence over the defaults.
 
-- Investigate and add FSDP instead of DDP
-- Eval zero-shot perplexities on standard evals (e.g. LAMBADA? HELM? etc.)
-- Finetune the finetuning script, I think the hyperparams are not great
-- Schedule for linear batch size increase during training
-- Incorporate other embeddings (rotary, alibi)
-- Separate out the optim buffers from model params in checkpoints I think
-- Additional logging around network health (e.g. gradient clip events, magnitudes)
-- Few more investigations around better init etc.
+For a longer GPT-2-sized run, make a copy of the configuration and tune it
+for the available GPU:
 
-## troubleshooting
+```powershell
+Copy-Item config\train_gpt2.py config\train_osho_scratch.py
+notepad config\train_osho_scratch.py
+Copy-Item utilities\configurator.py .\configurator.py
+python src\train.py config\train_osho_scratch.py --init_from=scratch --dataset=Osho --out_dir=out\scratch
+```
 
-Note that by default this repo uses PyTorch 2.0 (i.e. `torch.compile`). This is fairly new and experimental, and not yet available on all platforms (e.g. Windows). If you're running into related error messages try to disable this by adding `--compile=False` flag. This will slow down the code but at least it will run.
+The `Copy-Item` command supplies the compatibility shim expected by the
+legacy `exec(open('configurator.py'))` line in `src/train.py`. Keep that file
+at the repository root while using this entry point. The configuration file is
+passed as a positional argument; individual values use `--key=value`.
+The important scratch settings are:
 
-For some context on this repository, GPT, and language modeling it might be helpful to watch my [Zero To Hero series](https://karpathy.ai/zero-to-hero.html). Specifically, the [GPT video](https://www.youtube.com/watch?v=kCc8FmEb1nY) is popular if you have some prior language modeling context.
+```text
+init_from = "scratch"
+dataset = "Osho"
+out_dir = "out/scratch"
+n_layer = 12
+n_head = 12
+n_embd = 768
+block_size = 1024
+```
 
-For more questions/discussions feel free to stop by **#nanoGPT** on Discord:
+For multi-GPU training on one Windows or Linux host, launch the same script
+through `torchrun`:
 
-[![](https://dcbadge.vercel.app/api/server/3zy8kqD9Cp?compact=true&style=flat)](https://discord.gg/3zy8kqD9Cp)
+```powershell
+torchrun --standalone --nproc_per_node=2 src\train.py `
+  --dataset=Osho `
+  --out_dir=out\scratch `
+  --init_from=scratch `
+  --batch_size=2 `
+  --gradient_accumulation_steps=8 `
+  --max_iters=10000
+```
 
-## acknowledgements
+The effective token batch is:
 
-All nanoGPT experiments are powered by GPUs on [Lambda labs](https://lambdalabs.com), my favorite Cloud GPU provider. Thank you Lambda labs for sponsoring nanoGPT!
+```text
+batch_size * gradient_accumulation_steps * number_of_GPUs * block_size
+```
+
+Increase it gradually until the GPU is well utilized without out-of-memory
+errors. The training loop periodically evaluates `train` and `val` loss and
+saves `ckpt_scratch_full.pt` when validation loss improves. A checkpoint
+contains the model weights, model configuration, optimizer state, iteration,
+and validation metric, so it can be resumed.
+
+Resume a run without changing the architecture:
+
+```powershell
+python src\train.py `
+  --dataset=Osho `
+  --out_dir=out\scratch `
+  --init_from=resume `
+  --max_iters=20000
+```
+
+Do not overwrite a good checkpoint while experimenting; use a new `out_dir`.
+
+## 4. Continue training from Hugging Face GPT-2
+
+The `GPT.from_pretrained` method in `src/model.py` downloads a Hugging Face
+GPT-2 checkpoint and converts its Conv1D weights into this nanoGPT model's
+Linear layout. Supported identifiers are `gpt2`, `gpt2-medium`, `gpt2-large`,
+and `gpt2-xl`. The first run needs internet access; later runs use the local
+Hugging Face cache.
+
+Continued training updates all model parameters. Use a smaller learning rate
+than scratch training and monitor validation loss for overfitting:
+
+```powershell
+python src\train.py `
+  --dataset=Osho `
+  --out_dir=out_gpt2_osho `
+  --init_from=gpt2 `
+  --batch_size=2 `
+  --block_size=512 `
+  --gradient_accumulation_steps=16 `
+  --learning_rate=3e-5 `
+  --max_iters=2000 `
+  --eval_interval=100 `
+  --eval_iters=20 `
+  --decay_lr=False `
+  --device=cuda
+```
+
+For `gpt2-medium`, `gpt2-large`, or `gpt2-xl`, replace `--init_from` and
+reduce the batch size or use DDP. The output is still a full nanoGPT
+checkpoint and can be sampled with the regular generation utility.
+
+Important compatibility rules:
+
+- Keep the GPT-2 tokenizer and vocabulary at 50,257 tokens.
+- Do not change `n_layer`, `n_head`, or `n_embd` when loading a named GPT-2
+  checkpoint.
+- `block_size` may be cropped below 1,024, but a checkpoint cropped to a
+  smaller value cannot accept longer sequences.
+- Use the same checkpoint and tokenizer pair during deployment.
+
+## 5. LoRA fine-tuning of the same GPT-2 model
+
+LoRA freezes the Hugging Face GPT-2 base weights and trains small low-rank
+updates around the attention and MLP linear layers. It uses far less optimizer
+memory than full continued training and produces a small adapter checkpoint.
+The base model is still required at inference time.
+
+Run a short LoRA smoke test:
+
+```powershell
+python src\train_lora.py `
+  --dataset=Osho `
+  --out_dir=Lora\smoke `
+  --init_from=gpt2 `
+  --batch_size=2 `
+  --gradient_accumulation_steps=4 `
+  --block_size=512 `
+  --max_iters=20 `
+  --eval_interval=10 `
+  --eval_iters=5 `
+  --checkpoint_interval=10 `
+  --early_stopping_patience=0 `
+  --lora_rank=8 `
+  --lora_alpha=16 `
+  --lora_dropout=0.05 `
+  --device=cuda
+```
+
+Run a normal adapter training job:
+
+```powershell
+python src\train_lora.py `
+  --dataset=Osho `
+  --out_dir=Lora\rank_16 `
+  --init_from=gpt2 `
+  --batch_size=2 `
+  --gradient_accumulation_steps=16 `
+  --block_size=512 `
+  --max_iters=2000 `
+  --eval_interval=100 `
+  --eval_iters=20 `
+  --checkpoint_interval=100 `
+  --early_stopping_patience=3 `
+  --learning_rate=2e-4 `
+  --lora_rank=16 `
+  --lora_alpha=32 `
+  --lora_dropout=0.05 `
+  --device=cuda
+```
+
+The best adapter is written to `Lora\rank_16\adapter.pt`; `config.json`
+records the run arguments. Periodic checkpoints include enough metadata to
+resume:
+
+```powershell
+python src\train_lora.py `
+  --dataset=Osho `
+  --out_dir=Lora\rank_16 `
+  --init_from=gpt2 `
+  --resume_from=Lora\rank_16\adapter.pt `
+  --max_iters=4000 `
+  --device=cuda
+```
+
+The resume arguments must agree with the checkpoint's model name, block size,
+rank, alpha, and dropout. For a fair comparison with full continued training,
+use the same tokenized dataset, validation split, tokenizer, and prompt set.
+
+Generate from the adapter:
+
+```powershell
+python utilities\generate_lora.py `
+  --message "What is meditation?" `
+  --checkpoint=Lora\rank_16\adapter.pt `
+  --tokenizer=data\Osho\gpt2 `
+  --model=gpt2 `
+  --max-new-tokens=100 `
+  --temperature=0.7 `
+  --top-k=150 `
+  --device=cuda
+```
+
+## 6. Evaluate and compare models locally
+
+The comparison application loads the scratch checkpoint, full continued
+checkpoint, and LoRA adapter with shared generation settings:
+
+```powershell
+uvicorn model_compare_app.app.api:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000`. The API can also be called directly:
+
+```powershell
+$body = @{
+  message = "What is meditation?"
+  max_new_tokens = 50
+  temperature = 0.7
+  top_k = 150
+  seed = 1337
+} | ConvertTo-Json -Compress
+
+Invoke-RestMethod `
+  -Uri http://127.0.0.1:8000/generate `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+`GET /health` reports whether models have been loaded. Model loading is lazy,
+so the first `/generate` request can be slow. `POST /generate/stream` emits
+server-sent events while each model generates.
+
+## 7. Build and test the Docker image
+
+The Dockerfile copies the three trained artifacts and tokenizer into the
+image, downloads a pinned GPT-2 base snapshot during the build, and enables
+offline Hugging Face mode at runtime. Run from the repository root:
+
+```powershell
+docker build -t osho-model-compare:latest -f model_compare_app\Dockerfile .
+docker run --rm -p 8000:8000 --name osho-model-compare osho-model-compare:latest
+```
+
+The build requires these files to exist:
+
+```text
+out/ckpt_scratch_full.pt
+out_gpt2_osho/finetuned_gpt2.pt
+Lora/rank_16/adapter.pt
+data/Osho/gpt2/
+```
+
+If your output directories differ, either copy the chosen artifacts to those
+paths or update the `COPY` instructions and environment variables in
+[model_compare_app/Dockerfile](model_compare_app/Dockerfile).
+
+Use Compose for repeatable local runs:
+
+```powershell
+docker compose -f model_compare_app\docker-compose.ec2.yml up -d --build
+docker compose -f model_compare_app\docker-compose.ec2.yml logs -f
+```
+
+The image contains model weights and should be treated as sensitive
+deployment data. Do not publish it to a public registry unless the model and
+training data permit that distribution.
+
+## 8. Deploy to AWS EC2
+
+The detailed Windows-to-Ubuntu procedure is in
+[model_compare_app/AWS_DEPLOYMENT.md](model_compare_app/AWS_DEPLOYMENT.md).
+The following is the complete high-level sequence.
+
+### Provision and secure the instance
+
+1. Create an Ubuntu EC2 instance with enough RAM and disk for the image.
+   CPU inference is the default; use a GPU instance only when latency
+   justifies its cost.
+2. Attach a security group allowing TCP 22 only from your workstation IP.
+3. Allow TCP 8000 only from your own IP during testing. For public production,
+   put a reverse proxy and HTTPS in front of the application instead of
+   exposing Uvicorn directly.
+4. Install Docker and the Compose plugin on Ubuntu.
+5. Store the `.pem` key outside the repository or ensure it is ignored and
+   never committed.
+
+### Upload only the deployment inputs
+
+From Windows PowerShell, replace the host and key path:
+
+```powershell
+$key = "C:\Keys\nanogpt-ec2.pem"
+$hostName = "ubuntu@203.0.113.10"
+
+ssh -i $key $hostName "mkdir -p /home/ubuntu/nanoGPT"
+scp -r -i $key `
+  .\model_compare_app `
+  .\src `
+  .\out `
+  .\out_gpt2_osho `
+  .\Lora `
+  .\data\Osho `
+  "${hostName}:/home/ubuntu/nanoGPT/"
+```
+
+Verify the expected paths on the instance:
+
+```powershell
+ssh -i $key $hostName `
+  "cd /home/ubuntu/nanoGPT && ls -lh out/ckpt_scratch_full.pt out_gpt2_osho/finetuned_gpt2.pt Lora/rank_16/adapter.pt data/Osho/gpt2/config.json"
+```
+
+### Build, start, and verify
+
+Run on the EC2 host:
+
+```bash
+cd /home/ubuntu/nanoGPT
+docker compose -f model_compare_app/docker-compose.ec2.yml build
+docker compose -f model_compare_app/docker-compose.ec2.yml up -d
+docker compose -f model_compare_app/docker-compose.ec2.yml ps
+curl -i http://127.0.0.1:8000/health
+```
+
+Test generation from PowerShell:
+
+```powershell
+$body = @{ message = "Hello"; max_new_tokens = 1; temperature = 0.7; top_k = 10; seed = 1 } |
+  ConvertTo-Json -Compress
+Invoke-RestMethod `
+  -Uri "http://203.0.113.10:8000/generate" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body `
+  -TimeoutSec 180
+```
+
+Expected results contain `scratch`, `continued_training`, and `lora_rank_16`.
+The first request loads all models and can take several minutes.
+
+Useful operations:
+
+```bash
+docker compose -f model_compare_app/docker-compose.ec2.yml logs -f
+docker compose -f model_compare_app/docker-compose.ec2.yml restart
+docker compose -f model_compare_app/docker-compose.ec2.yml down
+```
+
+### Production checklist
+
+- Use an IAM role with the minimum permissions; do not put AWS access keys in
+  the source tree or Docker image.
+- Keep port 22 restricted and use a fixed administrator IP or a bastion.
+- Put Nginx or an AWS load balancer with TLS in front of Uvicorn.
+- Add authentication and request rate limiting before making `/generate`
+  public.
+- Set CloudWatch logging, disk alerts, and an instance stop schedule.
+- Pin image versions and model revisions, and retain a tested rollback image.
+- Load-test with bounded `max_new_tokens`; generation cost scales with output
+  length and concurrent requests.
+
+## 9. Troubleshooting
+
+### `FileNotFoundError` for `train.bin` or `val.bin`
+
+Run the matching dataset preparation script and pass the same dataset name to
+the trainer:
+
+```powershell
+python data\Osho\prepare.py
+python src\train_lora.py --dataset=Osho --max_iters=1 --device=cpu
+```
+
+### CUDA out-of-memory
+
+Reduce `batch_size`, `block_size`, or
+`gradient_accumulation_steps` (the latter reduces the effective batch size),
+choose a smaller GPT-2 variant, and close other GPU processes. Gradient
+accumulation can be increased again after the per-step batch fits.
+
+### Hugging Face download or offline errors
+
+The first `--init_from=gpt2` run must have network access. For deployment,
+the Dockerfile downloads the pinned snapshot during `docker build`; the
+runtime then uses `HF_HUB_OFFLINE=1`. Do not enable offline mode before the
+base snapshot exists locally.
+
+### Checkpoint/tokenizer mismatch
+
+Use the tokenizer generated from the same GPT-2 vocabulary and do not mix a
+custom tokenizer with GPT-2 weights. LoRA adapters are not standalone models:
+they require the matching base model name and LoRA metadata.
+
+### API returns a model-loading error
+
+Inspect the container logs and verify all `COPY` source files exist on the
+build machine:
+
+```bash
+docker logs --tail 200 osho-model-compare
+```
+
+## 10. Reproducibility and experiment records
+
+For every run, record:
+
+- Git commit and configuration file.
+- Dataset source, license, preprocessing version, and split seed.
+- Tokenizer and Hugging Face model revision.
+- GPU type, precision, batch size, sequence length, optimizer, learning rate,
+  LoRA rank/alpha/dropout, and number of tokens.
+- Training and validation loss curves.
+- Evaluation prompts and generation settings.
+
+Keep large checkpoints in object storage or a model registry rather than Git.
+This repository's ignore rules intentionally exclude local environments,
+caches, logs, generated binaries, model checkpoints, and private keys.

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101827">
+    <title>Osho Model Lab</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow">DIRECT MODEL COMPARISON</div>
+          <h1>Three minds.<br><span>One prompt.</span></h1>
+          <p class="subtitle">Compare how your Osho language models respond to the same idea.</p>
+        </div>
+        <div class="profile-avatar">
+          <img src="/static/IMG_20261007_215557.jpg" alt="Abishek">
+        </div>
+      </header>
+
+      <section class="control-panel" aria-labelledby="controls-title">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">INPUT & SAMPLING</div>
+            <h2 id="controls-title">Set the conditions</h2>
+          </div>
+          <span id="status-pill" class="status-pill">Ready</span>
+        </div>
+        <form id="generate-form">
+          <label class="prompt-label" for="message">Your message</label>
+          <textarea id="message" name="message" rows="4" maxlength="10000"
+            placeholder="Ask something about meditation, awareness, or life..." required></textarea>
+          <div class="controls-grid">
+            <label class="control">
+              <span>Temperature <output id="temperature-value">0.70</output></span>
+              <input id="temperature" type="range" min="0.1" max="2" step="0.05" value="0.7">
+              <small>Lower is focused, higher is creative</small>
+            </label>
+            <label class="control">
+              <span>Output tokens <output id="tokens-value">100</output></span>
+              <input id="max-new-tokens" type="range" min="1" max="1023" step="1" value="100">
+              <small>Maximum new tokens per model</small>
+            </label>
+            <label class="control">
+              <span>Top-k <output id="top-k-value">150</output></span>
+              <input id="top-k" type="range" min="1" max="1000" step="1" value="150">
+              <small>Number of likely tokens considered</small>
+            </label>
+          </div>
+          <div class="form-footer">
+            <label class="seed-control"><input id="use-seed" type="checkbox" checked> Use the same seed for a fair comparison</label>
+            <button id="generate-button" type="submit"><span>Generate all three</span><span class="button-arrow">→</span></button>
+          </div>
+          <p id="error-message" class="error-message" role="alert" hidden></p>
+        </form>
+      </section>
+
+      <section class="results-section" aria-labelledby="results-title">
+        <div class="results-heading">
+          <div>
+            <div class="eyebrow">THE RESULTS</div>
+            <h2 id="results-title">One prompt, three perspectives</h2>
+          </div>
+          <span id="run-meta" class="run-meta">No generation yet</span>
+        </div>
+        <div id="results-grid" class="results-grid">
+          <article class="result-card scratch-card">
+            <div class="card-top"><span class="model-mark">01</span><span class="model-status">WAITING</span></div>
+            <h3>Scratch</h3><p class="model-description">Trained from random initialization</p>
+            <div class="response empty-response">Your response will appear here.</div>
+            <div class="card-footer"><span class="metric">— tokens</span><span class="metric">— ms</span><button class="copy-button" type="button" disabled>Copy</button></div>
+          </article>
+          <article class="result-card continued-card">
+            <div class="card-top"><span class="model-mark">02</span><span class="model-status">WAITING</span></div>
+            <h3>Continued Training</h3><p class="model-description">GPT-2 fully fine-tuned on the dataset</p>
+            <div class="response empty-response">Your response will appear here.</div>
+            <div class="card-footer"><span class="metric">— tokens</span><span class="metric">— ms</span><button class="copy-button" type="button" disabled>Copy</button></div>
+          </article>
+          <article class="result-card lora-card">
+            <div class="card-top"><span class="model-mark">03</span><span class="model-status">WAITING</span></div>
+            <h3>LoRA Fine-tuning</h3><p class="model-description">GPT-2 with a rank-16 adapter</p>
+            <div class="response empty-response">Your response will appear here.</div>
+            <div class="card-footer"><span class="metric">— tokens</span><span class="metric">— ms</span><button class="copy-button" type="button" disabled>Copy</button></div>
+          </article>
+        </div>
+      </section>
+      <footer class="page-footer">Osho Model Lab <span>·</span> nanoGPT comparison workspace</footer>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

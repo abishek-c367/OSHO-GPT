@@ -1,14 +1,19 @@
-import os
-import requests
-import tiktoken
-import numpy as np
 
-# download the tiny shakespeare dataset
-input_file_path = os.path.join(os.path.dirname(__file__), 'input.txt')
+import os
+# import requests
+# import tiktoken
+import numpy as np
+from transformers import GPT2TokenizerFast
+
+
+
+input_file_path = r"C:\Abishek\NanoGPT\nanoGPT\Dataset_text.txt"
+print(input_file_path)
+
 if not os.path.exists(input_file_path):
-    data_url = 'https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt'
-    with open(input_file_path, 'w', encoding='utf-8') as f:
-        f.write(requests.get(data_url).text)
+    print("File does not exist")
+    exit()
+
 
 with open(input_file_path, 'r', encoding='utf-8') as f:
     data = f.read()
@@ -16,10 +21,14 @@ n = len(data)
 train_data = data[:int(n*0.9)]
 val_data = data[int(n*0.9):]
 
+tokenizer = GPT2TokenizerFast.from_pretrained(
+    r"C:\Abishek\NanoGPT\model\gpt2",
+    local_files_only=True
+)
 # encode with tiktoken gpt2 bpe
-enc = tiktoken.get_encoding("gpt2")
-train_ids = enc.encode_ordinary(train_data)
-val_ids = enc.encode_ordinary(val_data)
+# enc = tiktoken.get_encoding("gpt2")
+train_ids = tokenizer.encode(train_data)
+val_ids = tokenizer.encode(val_data)
 print(f"train has {len(train_ids):,} tokens")
 print(f"val has {len(val_ids):,} tokens")
 

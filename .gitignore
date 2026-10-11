@@ -10,3 +10,52 @@ __pycache__/
 input.txt
 env/
 venv/
+
+# Python environments and local tooling
+.venv/
+ENV/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local data, generated tokenizers, caches, and experiment output
+data/*/train.bin
+data/*/val.bin
+data/*/meta.pkl
+data/*/gpt2/
+out*/
+Lora/
+checkpoints/
+*.ckpt
+*.safetensors
+*.npz
+*.npy
+*.h5
+*.hdf5
+wandb/
+logs/
+*.log
+
+# Hugging Face and model caches
+.cache/
+cache/
+hf_cache/
+huggingface/
+.huggingface/
+
+# Secrets and deployment credentials
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+
+# Docker and OS/editor artifacts
+.docker/
+docker-data/
+Thumbs.db
+*.swp
+*.swo

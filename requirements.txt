@@ -1,0 +1,27 @@
+# Core training and inference
+#
+# Install the PyTorch wheel that matches the host CUDA driver when training.
+# The Dockerfile installs the CPU wheel separately before this file.
+torch==2.12.0
+transformers==5.17.0
+numpy>=2.0,<3
+
+# Tokenization and dataset preparation
+datasets>=4.0,<5
+tiktoken>=0.9,<1
+tqdm>=4.67,<5
+requests>=2.32,<3
+
+# Experiment tracking and optional notebook utilities
+wandb>=0.19,<1
+jupyterlab>=4.3,<5
+ipykernel>=6.29,<7
+matplotlib>=3.9,<4
+pandas>=2.2,<3
+nltk>=3.9,<4
+
+# FastAPI inference service
+fastapi==0.138.0
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
+huggingface-hub>=0.30,<2

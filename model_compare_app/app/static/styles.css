@@ -1,0 +1,58 @@
+:root {
+  --ink: #172033;
+  --muted: #687286;
+  --paper: #f5f7fb;
+  --line: #dce2ed;
+  --navy: #101827;
+  --coral: #ee725e;
+  --purple: #755de0;
+  --mint: #2aa889;
+}
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--ink); background: var(--paper); font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; }
+.shell { max-width: 1280px; margin: 0 auto; padding: 24px 28px 16px; }
+.hero { align-items: flex-start; display: flex; justify-content: space-between; padding: 10px 2px 22px; }
+.hero-copy { min-width: 0; }
+.profile-avatar { background: white; border: 4px solid white; border-radius: 50%; box-shadow: 0 10px 24px #29355224; flex: 0 0 86px; height: 86px; margin: 0 4px 0 24px; overflow: hidden; }
+.profile-avatar img { display: block; height: 100%; object-fit: cover; object-position: center 28%; width: 100%; }
+.eyebrow { color: var(--coral); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
+h1, h2, h3, p { margin-top: 0; }
+h1 { font-size: clamp(34px, 5vw, 56px); letter-spacing: -.07em; line-height: .96; margin: 8px 0 10px; }
+h1 span { color: var(--coral); }
+.subtitle { color: var(--muted); font-size: 14px; }
+.control-panel { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; box-shadow: 0 14px 40px #2935520b; }
+.section-heading, .results-heading, .form-footer, .card-top, .card-footer { align-items: center; display: flex; justify-content: space-between; }
+h2 { font-size: 20px; letter-spacing: -.04em; margin: 4px 0 14px; }
+.status-pill, .model-status { border-radius: 99px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .12em; padding: 7px 10px; background: #f0f3f7; }
+.prompt-label { display: block; font-size: 12px; font-weight: 800; margin-bottom: 8px; }
+textarea { border: 1px solid var(--line); border-radius: 8px; color: var(--ink); display: block; font-size: 13px; min-height: 64px; outline: none; padding: 10px 12px; resize: vertical; width: 100%; }
+textarea:focus { border-color: var(--coral); box-shadow: 0 0 0 3px #ee725e1c; }
+.controls-grid { display: grid; gap: 18px; grid-template-columns: repeat(3, 1fr); margin: 14px 0; }
+.control span { display: flex; font-size: 13px; font-weight: 800; justify-content: space-between; }
+output { color: var(--coral); }
+input[type="range"] { accent-color: var(--coral); margin: 8px 0 3px; width: 100%; }
+small, .model-description, .run-meta, .metric { color: var(--muted); font-size: 12px; }
+.seed-control { color: var(--muted); font-size: 12px; }
+button { border: 0; cursor: pointer; font: inherit; }
+#generate-button { background: var(--navy); border-radius: 8px; color: white; font-size: 13px; font-weight: 800; padding: 9px 13px; }
+#generate-button:hover { background: #202d45; }
+.button-arrow { color: var(--coral); font-size: 20px; margin-left: 14px; }
+.error-message { color: #bd3b31; font-size: 13px; margin: 14px 0 0; }
+.results-section { padding: 24px 2px 0; }
+.results-heading h2 { margin-bottom: 12px; }
+.results-grid { display: grid; gap: 14px; grid-template-columns: repeat(3, 1fr); }
+.result-card { background: white; border: 1px solid var(--line); border-top: 3px solid var(--coral); border-radius: 11px; min-height: 270px; padding: 15px; }
+.continued-card { border-top-color: var(--purple); }
+.lora-card { border-top-color: var(--mint); }
+.model-mark { color: var(--muted); font-size: 11px; font-weight: 800; }
+.result-card h3 { font-size: 18px; letter-spacing: -.05em; margin: 16px 0 3px; }
+.response { font-family: Georgia, serif; font-size: 14px; line-height: 1.45; min-height: 125px; padding: 12px 0; white-space: pre-wrap; }
+.empty-response { color: #a4acba; font-family: inherit; font-size: 14px; }
+.card-footer { border-top: 1px solid var(--line); padding-top: 15px; }
+.copy-button { background: transparent; color: var(--coral); font-size: 12px; font-weight: 800; }
+.copy-button:disabled { color: #a4acba; cursor: default; }
+.page-footer { color: var(--muted); font-size: 10px; padding: 22px 0 0; text-align: center; }
+.page-footer span { color: var(--coral); padding: 0 5px; }
+.loading .model-status { animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .4; } }
+@media (max-width: 800px) { .shell { padding: 20px 16px; } .profile-avatar { flex-basis: 64px; height: 64px; margin-left: 16px; } .controls-grid, .results-grid { grid-template-columns: 1fr; } .form-footer { align-items: stretch; flex-direction: column; gap: 12px; } #generate-button { width: 100%; } .results-heading { align-items: flex-start; flex-direction: column; } }

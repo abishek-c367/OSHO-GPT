@@ -1,0 +1,5 @@
+*
+!src/
+!src/**
+!model_compare_app/
+!model_compare_app/**

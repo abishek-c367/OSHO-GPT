@@ -10,6 +10,7 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 import math
 import inspect
 from dataclasses import dataclass
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -169,18 +170,29 @@ class GPT(nn.Module):
 
     def forward(self, idx, targets=None):
         device = idx.device
+        # print(idx.shape)
         b, t = idx.size()
+        #-----------------
+        # print(f'input index shape = {b,t}')
+        #-----------------
+        # print(f"Reporting from class GPT inside model.py in forward()- b,t = {b,t}")
         assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
         pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
 
         # forward the GPT model itself
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
+        # print(f'tok_emb and tok_emb shape = {tok_emb.shape}')
+
+        
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
+
         x = self.transformer.drop(tok_emb + pos_emb)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
 
+        # print(f'print the output of transformer shape = {x.shape}')
+        # print(f'x = {x[:,[-1],:].shape}')
         if targets is not None:
             # if we are given some desired targets also calculate the loss
             logits = self.lm_head(x)
@@ -188,9 +200,11 @@ class GPT(nn.Module):
         else:
             # inference-time mini-optimization: only forward the lm_head on the very last position
             logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
+
             loss = None
 
         return logits, loss
+        
 
     def crop_block_size(self, block_size):
         # model surgery to decrease the block size if necessary
@@ -205,7 +219,8 @@ class GPT(nn.Module):
 
     @classmethod
     def from_pretrained(cls, model_type, override_args=None):
-        assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
+        is_local_path = Path(model_type).is_dir()
+        assert is_local_path or model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
         override_args = override_args or {} # default to empty dict
         # only dropout can be overridden see more notes below
         assert all(k == 'dropout' for k in override_args)
@@ -218,7 +233,7 @@ class GPT(nn.Module):
             'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
             'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
             'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
-        }[model_type]
+        }.get(model_type, dict(n_layer=12, n_head=12, n_embd=768))
         print("forcing vocab_size=50257, block_size=1024, bias=True")
         config_args['vocab_size'] = 50257 # always 50257 for GPT model checkpoints
         config_args['block_size'] = 1024 # always 1024 for GPT model checkpoints
@@ -322,9 +337,59 @@ class GPT(nn.Module):
                 logits[logits < v[:, [-1]]] = -float('Inf')
             # apply softmax to convert logits to (normalized) probabilities
             probs = F.softmax(logits, dim=-1)
-            # sample from the distribution
+
+            # Sample directly from the requested top-k-filtered distribution.
             idx_next = torch.multinomial(probs, num_samples=1)
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=1)
 
         return idx
+
+
+class LoRALinear(nn.Module):
+    """A frozen linear layer with a trainable low-rank update."""
+
+    def __init__(self, base: nn.Linear, rank: int, alpha: float, dropout: float):
+        super().__init__()
+        if rank <= 0:
+            raise ValueError("LoRA rank must be positive")
+        self.base = base
+        self.base.weight.requires_grad_(False)
+        if self.base.bias is not None:
+            self.base.bias.requires_grad_(False)
+        self.scaling = alpha / rank
+        self.dropout = nn.Dropout(dropout)
+        self.lora_a = nn.Linear(base.in_features, rank, bias=False)
+        self.lora_b = nn.Linear(rank, base.out_features, bias=False)
+        nn.init.kaiming_uniform_(self.lora_a.weight, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_b.weight)
+
+    def forward(self, x):
+        base_output = self.base(x)
+        update = self.lora_b(self.lora_a(self.dropout(x))) * self.scaling
+        return base_output + update
+
+
+def apply_lora(model, rank=8, alpha=16.0, dropout=0.05,
+               target_modules=("c_attn", "c_proj", "c_fc")):
+    """Replace selected GPT-2 projections with LoRA-enabled projections."""
+    for parent in model.modules():
+        for name, child in list(parent.named_children()):
+            if name in target_modules and isinstance(child, nn.Linear):
+                setattr(parent, name, LoRALinear(child, rank, alpha, dropout))
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    for module in model.modules():
+        if isinstance(module, LoRALinear):
+            module.lora_a.weight.requires_grad_(True)
+            module.lora_b.weight.requires_grad_(True)
+    return model
+
+
+def lora_state_dict(model):
+    """Return only adapter weights, suitable for a small portable checkpoint."""
+    return {
+        name: parameter.detach().cpu()
+        for name, parameter in model.named_parameters()
+        if "lora_a" in name or "lora_b" in name
+    }
