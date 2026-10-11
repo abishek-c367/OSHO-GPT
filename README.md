@@ -1,4 +1,4 @@
-# NanoGPT: train, adapt, and deploy a GPT-2 model
+# OSHO-GPT: train, adapt, and deploy a GPT-2 model
 
 This repository is a practical end-to-end GPT language-model project. It
 contains the model implementation, data preparation scripts, training entry
